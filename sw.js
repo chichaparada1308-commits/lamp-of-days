@@ -1,4 +1,4 @@
-const CACHE = 'lamp-v5';
+const CACHE = 'lamp-v7';
 const FILES = ['./', './index.html', './manifest.json', './picture.jpg', './icon-192.png', './icon-512.png', './measures.js', './backup.js'];
 
 self.addEventListener('install', e => {
