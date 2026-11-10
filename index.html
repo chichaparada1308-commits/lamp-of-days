@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Лампа днів</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  body { margin: 0; background: #111; color: #ddd; font-family: sans-serif;
+         display: flex; flex-direction: column; align-items: center; }
+  #pic { display: block; width: 100vw; max-width: 900px; height: auto; }
+  #label { margin: 10px 0; font-size: 14px; text-align: center; }
+  #panel { width: 100%; max-width: 900px; padding: 0 12px 40px; box-sizing: border-box; }
+  #nav { display: flex; justify-content: center; align-items: center; gap: 16px; margin: 8px 0 14px; }
+  #nav button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 8px;
+                font-size: 18px; padding: 6px 14px; }
+  #nav button:disabled { opacity: 0.3; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+         padding: 10px 0; border-bottom: 1px solid #222; }
+  .q { flex: 1; font-size: 15px; }
+  .q b { display: block; font-size: 12px; color: #888; font-weight: normal; }
+  .q .sub { display: block; font-size: 11px; color: #777; margin-top: 2px; }
+  .btns { display: flex; gap: 6px; }
+  .btns button { width: 42px; height: 42px; border-radius: 10px; border: 1px solid #444;
+                 background: #1c1c1c; color: #ddd; font-size: 16px; }
+  .btns button.on { background: #e8e8e8; color: #111; border-color: #e8e8e8; font-weight: bold; }
+  .btns button:disabled { opacity: 0.35; }
+  #reset { margin-top: 24px; background: none; color: #777; border: 1px solid #333;
+           border-radius: 8px; padding: 8px 12px; font-size: 12px; }
+</style>
+</head>
+<body>
+<svg id="pic" viewBox="0 0 1280 989" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="open">
+      <g id="maskg" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"></g>
+    </mask>
+  </defs>
+  <rect id="bg" width="1280" height="989" fill="#000"/>
+  <image id="img" href="picture.jpg" width="1280" height="989" mask="url(#open)"/>
+  <g id="lines" fill="none" stroke="none"></g>
+</svg>
+<div id="label"></div>
+<div id="panel">
+  <div id="nav">
+    <button id="prev">◀</button>
+    <span id="dateLabel"></span>
+    <button id="next">▶</button>
+  </div>
+  <div id="list"></div>
+  <button id="reset">Скинути всі дані</button>
+</div>
+<script>
+const W = 1280, H = 989;
+const K = Math.SQRT1_2;
+const ELONG = 3;
+const LOCK_OLD_DAYS = true;   // дні старші за вчорашній заблоковані
+
+const HABITS = [
+  ["Нікотин", "Легені сьогодні дихали чистим повітрям? 🫁"],
+  ["Алкоголь", "Сьогодні голова ясна, а склянка порожня? 🥂"],
+  ["Цукор", "Солодке сьогодні не здобуло перемоги над тобою? 🍬"],
+  ["Соціальність", "Ти сьогодні поспілкувався з людиною наживо чи по телефону? 🗣️"],
+  ["Робота", "Головна робоча справа дня зроблена? 💼"],
+  ["Ігри", "Ігри сьогодні залишились у вільний час, а не з'їли його? 🎮"],
+  ["7:00", "Ти прокинувся о 7:00, а не вдавав, що будильника не було? ⏰"],
+  ["Фінанси", "Сьогодні гроші витрачені свідомо, а не випадково? 💸"],
+  ["Спорт", "Тіло сьогодні отримало своє: рух, піт, пульс? 💪"],
+  ["Англійська", "Англійська сьогодні почула тебе хоч 10 хвилин? 🇬🇧"]
+];
+
+function clipAxis(poly, axis, val, keepGreater) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const pin = keepGreater ? p[axis] >= val : p[axis] <= val;
+    const qin = keepGreater ? q[axis] >= val : q[axis] <= val;
+    if (pin) out.push(p);
+    if (pin !== qin) {
+      const t = (val - p[axis]) / (q[axis] - p[axis]);
+      out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]);
+    }
+  }
+  return out;
+}
+function clipRect(poly) {
+  const steps = [[0, 0, true], [0, W, false], [1, 0, true], [1, H, false]];
+  for (const [axis, val, g] of steps) {
+    poly = clipAxis(poly, axis, val, g);
+    if (poly.length < 3) return [];
+  }
+  return poly;
+}
+function area(poly) {
+  let s = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    s += p[0] * q[1] - q[0] * p[1];
+  }
+  return Math.abs(s) / 2;
+}
+
+function buildCells(a) {
+  const b = a * ELONG, out = [];
+  const R = Math.hypot(W, H) / 2 + b;
+  const J = Math.ceil(R / (b / 2)), I = Math.ceil(R / a);
+  for (let j = -J; j <= J; j++) {
+    for (let i = -I; i <= I; i++) {
+      const dx = i * a + ((j & 1) ? a / 2 : 0), dy = j * b / 2;
+      const cx = W / 2 + (dx + dy) * K, cy = H / 2 + (dy - dx) * K;
+      if (cx < -b / 2 || cx > W + b / 2 || cy < -b / 2 || cy > H + b / 2) continue;
+      const verts = [[0, -b / 2], [a / 2, 0], [0, b / 2], [-a / 2, 0]]
+        .map(([u, v]) => [cx + (u + v) * K, cy + (v - u) * K]);
+      const poly = clipRect(verts);
+      if (poly.length < 3) continue;
+      if (area(poly) < 0.03 * a * b / 2) continue;
+      out.push(poly);
+    }
+  }
+  return out;
+}
+
+let a = 60, cells;
+for (; a > 8; a -= 0.25) {
+  cells = buildCells(a);
+  if (cells.length >= 1000) break;
+}
+const TOTAL = cells.length;
+
+let order;
+try { order = JSON.parse(localStorage.getItem('order')); } catch (e) {}
+if (!order || order.length !== TOTAL) {
+  order = Array.from({ length: TOTAL }, (_, i) => i);
+  for (let i = TOTAL - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  localStorage.setItem('order', JSON.stringify(order));
+}
+const rank = new Array(TOTAL);
+order.forEach((cellIndex, k) => { rank[cellIndex] = k; });
+
+const NS = 'http://www.w3.org/2000/svg';
+const maskg = document.getElementById('maskg');
+const lines = document.getElementById('lines');
+const img = document.getElementById('img');
+const pts = p => p.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ');
+const maskPolys = [], linePolys = [];
+cells.forEach(poly => {
+  const m = document.createElementNS(NS, 'polygon');
+  m.setAttribute('points', pts(poly));
+  maskg.appendChild(m); maskPolys.push(m);
+  const l = document.createElementNS(NS, 'polygon');
+  l.setAttribute('points', pts(poly));
+  lines.appendChild(l); linePolys.push(l);
+});
+
+function colorForScore(s) {
+  const st = ["#000000", "#ff0000", "#ffff00", "#00aa00", "#0000ff", "#8000ff", "#ffffff"];
+  const p = Math.max(0, Math.min(1000, s)) / 1000 * (st.length - 1);
+  const i = Math.min(Math.floor(p), st.length - 2);
+  const t = p - i;
+  const x = st[i], y = st[i + 1];
+  let o = "#";
+  for (const k of [1, 3, 5]) {
+    const u = parseInt(x.substr(k, 2), 16), v = parseInt(y.substr(k, 2), 16);
+    o += Math.round(u + (v - u) * t).toString(16).padStart(2, "0");
+  }
+  return o;
+}
+
+function render(score) {
+  const full = score >= 1000;
+  const opened = full ? TOTAL : Math.max(0, score);
+  document.getElementById("bg").setAttribute("fill", colorForScore(score));
+  maskPolys.forEach((m, i) => { m.style.display = rank[i] < opened ? '' : 'none'; });
+  linePolys.forEach((l, i) => { l.style.display = rank[i] < opened ? 'none' : ''; });
+  if (full) img.removeAttribute('mask'); else img.setAttribute('mask', 'url(#open)');
+  document.getElementById('label').textContent =
+    'Сума: ' + score + ' / 1000   ·   Середнє: ' + (score / HABITS.length).toFixed(1) + ' / 100';
+}
+
+// ---------- Дати ----------
+function pad(n) { return String(n).padStart(2, '0'); }
+function dateStr(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function shiftDate(s, n) {
+  const [y, m, d] = s.split('-').map(Number);
+  return dateStr(new Date(y, m - 1, d + n));
+}
+const TODAY = dateStr(new Date());
+const YESTERDAY = shiftDate(TODAY, -1);
+let day = TODAY;
+
+let entries = {};
+try { entries = JSON.parse(localStorage.getItem('entries')) || {}; } catch (e) {}
+
+// ---------- Підрахунок: щоразу з усієї історії ----------
+function compute() {
+  const res = HABITS.map(() => ({ score: 0, streak: 0 }));
+  const dates = Object.keys(entries).sort();
+  if (!dates.length) return res;
+  let d = dates[0];
+  while (d <= TODAY) {
+    const vals = entries[d] || [];
+    const final = d < YESTERDAY;            // день уже закрито
+    HABITS.forEach((_, i) => {
+      let v = vals[i];
+      if (v == null) {
+        if (!final) return;                  // сьогодні й учора: ще можна ввести
+        v = 0;                               // закритий день без запису = зрив
+      }
+      const r = res[i];
+      if (v === 0) {
+        r.score = Math.max(0, r.score - Math.floor(r.score / 10));
+        r.streak = 0;
+      } else {
+        r.streak++;
+        r.score += v;
+        if (r.streak % 10 === 0) r.score += r.streak / 10;
+        r.score = Math.min(100, r.score);
+      }
+    });
+    d = shiftDate(d, 1);
+  }
+  return res;
+}
+
+function refresh() {
+  const res = compute();
+  render(res.reduce((s, r) => s + r.score, 0));
+  return res;
+}
+
+function renderList() {
+  const res = compute();
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  const locked = LOCK_OLD_DAYS && day < YESTERDAY;
+  const vals = entries[day] || new Array(HABITS.length).fill(null);
+  HABITS.forEach((h, i) => {
+    const row = document.createElement('div'); row.className = 'row';
+    const q = document.createElement('div'); q.className = 'q';
+    q.innerHTML = '<b>' + h[0] + '</b>' + h[1] +
+      '<span class="sub">бали: ' + res[i].score + ' / 100 · серія: ' + res[i].streak + '</span>';
+    const btns = document.createElement('div'); btns.className = 'btns';
+    [0, 1, 2].forEach(n => {
+      const b = document.createElement('button');
+      b.textContent = n;
+      b.disabled = locked;
+      if (vals[i] === n) b.className = 'on';
+      b.onclick = () => {
+        const arr = entries[day] || new Array(HABITS.length).fill(null);
+        arr[i] = n;
+        entries[day] = arr;
+        localStorage.setItem('entries', JSON.stringify(entries));
+        renderList();
+        refresh();
+      };
+      btns.appendChild(b);
+    });
+    row.appendChild(q); row.appendChild(btns);
+    list.appendChild(row);
+  });
+  document.getElementById('dateLabel').textContent =
+    (day === TODAY ? 'Сьогодні (' + day + ')' : day) + (locked ? ' 🔒' : '');
+  document.getElementById('next').disabled = day >= TODAY;
+}
+
+document.getElementById('prev').onclick = () => { day = shiftDate(day, -1); renderList(); };
+document.getElementById('next').onclick = () => { if (day < TODAY) { day = shiftDate(day, 1); renderList(); } };
+document.getElementById('reset').onclick = () => {
+  if (confirm('Стерти всі записи? Це не можна скасувати.')) {
+    entries = {};
+    localStorage.removeItem('entries');
+    renderList();
+    refresh();
+  }
+};
+
+renderList();
+refresh();
+</script>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");</script>
+</body>
+</html>
