@@ -1,5 +1,5 @@
-const CACHE = 'lamp-v4';
-const FILES = ['./', './index.html', './manifest.json', './picture.jpg', './icon-192.png', './icon-512.png', './measures.js'];
+const CACHE = 'lamp-v5';
+const FILES = ['./', './index.html', './manifest.json', './picture.jpg', './icon-192.png', './icon-512.png', './measures.js', './backup.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)));
