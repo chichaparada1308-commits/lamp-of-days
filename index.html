@@ -33,14 +33,14 @@
 </style>
 </head>
 <body>
-<svg id="pic" viewBox="0 0 1280 989" xmlns="http://www.w3.org/2000/svg">
+<svg id="pic" viewBox="0 0 750 1000" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <mask id="open">
       <g id="maskg" fill="#fff" stroke="#fff" stroke-width="1.2" stroke-linejoin="round"></g>
     </mask>
   </defs>
-  <rect id="bg" width="1280" height="989" fill="#000"/>
-  <image id="img" href="picture.jpg" width="1280" height="989" mask="url(#open)"/>
+  <rect id="bg" width="750" height="1000" fill="#000"/>
+  <image id="img" href="picture.jpg" width="750" height="1000" mask="url(#open)"/>
   <g id="lines" fill="none" stroke="none"></g>
 </svg>
 <div id="label"></div>
@@ -54,7 +54,7 @@
   <button id="reset">Скинути всі дані</button>
 </div>
 <script>
-const W = 1280, H = 989;
+const W = 750, H = 1000;
 const K = Math.SQRT1_2;
 const ELONG = 3;
 const LOCK_OLD_DAYS = true;   // дні старші за вчорашній заблоковані
@@ -284,5 +284,6 @@ renderList();
 refresh();
 </script>
 <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");</script>
+<script src="measures.js"></script>
 </body>
 </html>
